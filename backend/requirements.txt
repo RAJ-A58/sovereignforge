@@ -1,0 +1,30 @@
+# SovereignForge backend dependencies
+# No pinned versions — let pip resolve compatible wheels for your Python version
+
+fastapi
+uvicorn[standard]
+websockets
+pydantic>=2.0
+
+# HTTP client (calls Ollama)
+httpx
+
+# Document processing
+pytesseract
+Pillow
+pdf2image
+pymupdf
+python-docx
+
+# File utilities
+aiofiles
+
+# Testing
+pytest
+pytest-asyncio
+
+# Docker SDK (for sandbox)
+docker
+
+# mitmproxy (sovereignty monitor — can run separately)
+mitmproxy

@@ -1,0 +1,267 @@
+"""
+Agent ReAct Loop — core of SovereignForge
+
+Implements the Reason + Act loop:
+  1. Send context to LLM
+  2. Parse LLM's JSON response (thought + action)
+  3. Execute the requested tool
+  4. Feed result back to LLM
+  5. Repeat until action == "finish" or max iterations
+
+Yields AgentEvent objects that are streamed to the UI via WebSocket.
+"""
+import sys
+import json
+import re
+import asyncio
+import inspect
+from typing import AsyncGenerator
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from models.registry import registry
+from agent.prompts import AGENT_SYSTEM_PROMPT
+from tools.ocr import run_ocr
+from tools.extract import run_extract
+from tools.draft_word import run_draft_word
+from tools.code_sandbox import run_code_sandbox
+from tools.image_understand import run_image_understand
+from config import MAX_AGENT_ITERATIONS
+from schemas import AgentEvent
+
+# ── Tool dispatch table ──
+TOOLS: dict = {
+    "ocr":              run_ocr,
+    "extract":          run_extract,
+    "draft_word":       run_draft_word,
+    "code_sandbox":     run_code_sandbox,
+    "image_understand": run_image_understand,
+}
+
+
+async def run_agent(
+    user_input: str,
+    task_type: str,
+    model_key: str,
+    file_path: str = None,
+) -> AsyncGenerator[AgentEvent, None]:
+    """
+    Main ReAct agent loop.
+
+    Yields AgentEvent objects (streamed to frontend via WebSocket).
+
+    Args:
+        user_input: The user's raw request string
+        task_type:  "document" | "coding" | "multimodal"
+        model_key:  "reasoning" | "coding" | "vision"
+        file_path:  Optional absolute path to uploaded file
+    """
+    # ── Build initial context ──
+    file_context = f"\nUploaded file available at: {file_path}" if file_path else ""
+    initial_message = f"{user_input}{file_context}"
+
+    # Conversation history (user/assistant turns)
+    conversation: list[dict] = [{"role": "user", "content": initial_message}]
+
+    yield AgentEvent(type="agent_start", data={
+        "task_type": task_type,
+        "model": model_key,
+        "message": f"Starting {task_type} task with {model_key} model...",
+    })
+
+    for iteration in range(MAX_AGENT_ITERATIONS):
+        yield AgentEvent(type="thinking", data={
+            "iteration": iteration + 1,
+            "message": f"Thinking... (step {iteration + 1}/{MAX_AGENT_ITERATIONS})",
+        })
+
+        # ── Call LLM ──
+        full_prompt = _build_prompt(conversation)
+        try:
+            raw_response = await registry.generate(
+                model_key,
+                full_prompt,
+                system=AGENT_SYSTEM_PROMPT,
+            )
+        except Exception as exc:
+            yield AgentEvent(type="error", data={
+                "message": f"LLM call failed: {str(exc)}",
+            })
+            return
+
+        # ── Parse LLM response ──
+        parsed = _parse_llm_response(raw_response)
+
+        if parsed is None:
+            yield AgentEvent(type="error", data={
+                "message": "Failed to parse LLM JSON response",
+                "raw": raw_response[:500],
+            })
+            # Try to recover — add a correction message
+            conversation.append({"role": "assistant", "content": raw_response})
+            conversation.append({
+                "role": "user",
+                "content": (
+                    "ERROR: Your response was not valid JSON. "
+                    "You MUST respond with the exact JSON format specified in the system prompt. "
+                    "Try again."
+                ),
+            })
+            continue
+
+        thought = parsed.get("thought", "")
+        action = parsed.get("action", "")
+        action_input = parsed.get("action_input", {})
+
+        yield AgentEvent(type="thought", data={
+            "thought": thought,
+            "action": action,
+            "iteration": iteration + 1,
+        })
+
+        # ── Handle FINISH ──
+        if action == "finish":
+            answer = action_input.get("answer", "Task complete.")
+            artifacts = action_input.get("artifacts", [])
+            yield AgentEvent(type="finish", data={
+                "answer": answer,
+                "artifacts": artifacts,
+            })
+            return
+
+        # ── Validate tool name ──
+        if action not in TOOLS:
+            yield AgentEvent(type="error", data={
+                "message": f"Unknown tool: '{action}'. Valid tools: {list(TOOLS.keys())}",
+            })
+            # Inject correction and let agent retry
+            conversation.append({"role": "assistant", "content": raw_response})
+            conversation.append({
+                "role": "user",
+                "content": (
+                    f"ERROR: Tool '{action}' does not exist. "
+                    f"Valid tools are: {list(TOOLS.keys())}. Try again."
+                ),
+            })
+            continue
+
+        # ── Execute tool ──
+        yield AgentEvent(type="tool_call", data={
+            "tool": action,
+            "input": action_input,
+            "message": f"Calling {action}...",
+        })
+
+        try:
+            tool_fn = TOOLS[action]
+            tool_result = await _call_tool(tool_fn, action_input)
+        except TypeError as exc:
+            tool_result = {
+                "success": False,
+                "error": f"Bad arguments for '{action}': {str(exc)}",
+            }
+        except Exception as exc:
+            tool_result = {"success": False, "error": str(exc)}
+
+        yield AgentEvent(type="tool_result", data={
+            "tool": action,
+            "result": _truncate_result(tool_result),
+            "success": bool(tool_result.get("success", False)),
+        })
+
+        # ── Feed result back into conversation ──
+        conversation.append({"role": "assistant", "content": raw_response})
+        result_summary = json.dumps(_truncate_result(tool_result, max_chars=2000))
+        conversation.append({
+            "role": "user",
+            "content": (
+                f"Tool '{action}' returned:\n{result_summary}\n\n"
+                "Continue with the next step."
+            ),
+        })
+
+    # ── Hit max iterations ──
+    yield AgentEvent(type="max_iterations", data={
+        "message": (
+            f"Reached maximum iterations ({MAX_AGENT_ITERATIONS}). "
+            "Stopping. Please try a simpler task or increase MAX_AGENT_ITERATIONS."
+        ),
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_prompt(conversation: list[dict]) -> str:
+    """Flatten conversation history into a single prompt string."""
+    parts = []
+    for msg in conversation:
+        role = msg["role"].upper()
+        parts.append(f"{role}: {msg['content']}")
+    parts.append("ASSISTANT:")
+    return "\n\n".join(parts)
+
+
+def _parse_llm_response(raw: str) -> dict | None:
+    """
+    Robustly extract a JSON object from the LLM's response.
+    Handles:
+      - Direct JSON
+      - Markdown fenced blocks
+      - JSON embedded in prose text
+    """
+    if not raw or not raw.strip():
+        return None
+
+    # 1. Direct parse
+    try:
+        return json.loads(raw.strip())
+    except json.JSONDecodeError:
+        pass
+
+    # 2. Strip markdown fences
+    clean = re.sub(r"```(?:json)?", "", raw).replace("```", "").strip()
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        pass
+
+    # 3. Find JSON object in text
+    match = re.search(r'\{[\s\S]*"action"[\s\S]*\}', raw)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+
+    # 4. Find any JSON object
+    match = re.search(r"\{[\s\S]*\}", raw)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
+async def _call_tool(tool_fn, action_input: dict):
+    """Dispatch tool call with the provided arguments."""
+    if inspect.iscoroutinefunction(tool_fn):
+        return await tool_fn(**action_input)
+    else:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, lambda: tool_fn(**action_input))
+
+
+def _truncate_result(result: dict, max_chars: int = 500) -> dict:
+    """Truncate long string values in a result dict for logging/UI."""
+    truncated = {}
+    for k, v in result.items():
+        if isinstance(v, str) and len(v) > max_chars:
+            truncated[k] = v[:max_chars] + f"... [{len(v) - max_chars} chars truncated]"
+        else:
+            truncated[k] = v
+    return truncated
