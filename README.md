@@ -1,4 +1,4 @@
-# 🛡 SovereignForge
+# SovereignForge
 
 **Sovereign On-Premise Agentic AI Workbench**
 
