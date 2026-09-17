@@ -1,0 +1,114 @@
+MANGALORE REFINERY AND PETROCHEMICALS LIMITED
+STANDARD OPERATING PROCEDURE
+
+Document No: SOP-ELE-012 | Title: ELECTRICAL MAINTENANCE - INSPECTION & REPORTING
+Revision: 03 | Effective Date: January 2026 | Approved By: VP Operations
+
+═══════════════════════════════════════════════════════════════════════════════
+1. PURPOSE
+═══════════════════════════════════════════════════════════════════════════════
+This procedure defines the standards for quarterly electrical inspection, 
+documentation, reporting, and corrective action follow-up for all electrical 
+equipment in the Crude Distillation Unit (CDU), Vacuum Distillation Unit (VDU), 
+and associated utilities at MRPL.
+
+═══════════════════════════════════════════════════════════════════════════════
+2. SCOPE
+═══════════════════════════════════════════════════════════════════════════════
+Applies to: All electrical equipment rated 415V and above, MCC panels, HT switchgear, 
+transformers, emergency systems, earthing networks, and field instruments within 
+the battery limits of CDU, VDU, and FCC units.
+
+═══════════════════════════════════════════════════════════════════════════════
+3. INSPECTION FREQUENCY
+═══════════════════════════════════════════════════════════════════════════════
+3.1 HT Switchgear (11kV/6.6kV): Quarterly visual, Annual shutdown inspection
+3.2 MCC Panels (415V): Quarterly
+3.3 Transformers: Monthly thermal scan, Annual oil sampling
+3.4 Field Instruments: Monthly calibration check
+3.5 Earthing Network: Semi-annual resistance measurement (limit: <=5 ohms)
+3.6 Emergency Lighting: Monthly functional test
+
+═══════════════════════════════════════════════════════════════════════════════
+4. SEVERITY CLASSIFICATION
+═══════════════════════════════════════════════════════════════════════════════
+HIGH SEVERITY (Immediate Action Required):
+  - Any finding posing immediate risk to personnel safety
+  - Equipment temperature exceeding rated value by >10degC
+  - Earthing resistance >10 ohms
+  - Any HT insulation fault
+  - Failure of safety-critical protection relay
+  Corrective Action Timeline: Within 24-48 hours. Plant shutdown if required.
+
+MEDIUM SEVERITY (Action Within 30 Days):
+  - Equipment showing accelerated wear but operational
+  - Earthing resistance 5-10 ohms
+  - Non-critical instrument drift
+  - Cable tray structural issues
+  Corrective Action Timeline: Within 30 days. Document and monitor.
+
+LOW SEVERITY (Scheduled Maintenance):
+  - Minor housekeeping issues
+  - Missing labels or tags
+  - Cosmetic damage not affecting function
+  Corrective Action Timeline: Next scheduled maintenance window.
+
+═══════════════════════════════════════════════════════════════════════════════
+5. REPORTING REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════════════
+5.1 All inspection findings must be documented in the prescribed format.
+5.2 HIGH severity findings must be reported to DGM (Electrical) within 2 hours.
+5.3 All findings must be entered in the CMMS (SAP PM module) within 24 hours.
+5.4 Quarterly Inspection Report must be approved by VP Operations within 7 days.
+5.5 Corrective action closure must be evidenced with photographs and test results.
+
+═══════════════════════════════════════════════════════════════════════════════
+6. APPROVAL NOTE REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════════════
+For HIGH severity findings requiring immediate expenditure (>INR 5 Lakhs):
+  - Prepare Approval Note in MRPL standard format
+  - Include: Root cause, risk assessment, cost estimate, recommended action
+  - Route for approval: CE → DGM → VP Operations
+  - Emergency approvals: Verbal from VP, followed by written within 24 hours
+
+═══════════════════════════════════════════════════════════════════════════════
+7. EARTHING STANDARDS
+═══════════════════════════════════════════════════════════════════════════════
+All earthing systems must comply with IS:3043:2018.
+  - Earth resistance: <=1 ohm for HT equipment, <=5 ohms for LT equipment
+  - Earth continuity: Test annually, document in Earth Test Register
+  - Pipe earthing: Mandatory for all process piping in hazardous areas
+
+═══════════════════════════════════════════════════════════════════════════════
+8. HAZARDOUS AREA REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════════════
+Zone 0: Continuous explosive atmosphere - Only intrinsically safe equipment (Ex-ia)
+Zone 1: Periodic explosive atmosphere - Ex-d, Ex-e, or Ex-ia equipment
+Zone 2: Infrequent explosive atmosphere - Ex-n or higher classification
+
+All Zone 1 conduit sealing fittings must be verified for integrity quarterly.
+Sealing compound: Chico-A (UL Listed) or equivalent M60 grade compound.
+Any damaged seals in Zone 1 or Zone 2 must be repaired within 7 days (MEDIUM) 
+or 24 hours if near ignition source (HIGH).
+
+═══════════════════════════════════════════════════════════════════════════════
+9. EMERGENCY LIGHTING STANDARDS
+═══════════════════════════════════════════════════════════════════════════════
+Comply with IS:3646 (Code of Practice for Interior Illumination).
+  - Emergency egress: Minimum 10 lux at floor level
+  - Battery backup: Minimum 1 hour at rated load
+  - Self-test: Monthly via test switch, annual discharge test
+  - Non-functional luminaires: Replace within 48 hours in critical areas
+
+═══════════════════════════════════════════════════════════════════════════════
+10. REFERENCES
+═══════════════════════════════════════════════════════════════════════════════
+IS:3043:2018 - Code of Practice for Earthing
+IS:3646 - Code of Practice for Interior Illumination
+IS:13947 - LV Switchgear and Controlgear
+IEC 60079 series - Explosive Atmospheres
+IS:732 - Code of Practice for Electrical Wiring Installations
+MRPL Safety Manual Rev-06 (2025)
+OISD-STD-137 - Inspection of Electrical Equipment
+
+Prepared by: Electrical Engineering Dept., MRPL

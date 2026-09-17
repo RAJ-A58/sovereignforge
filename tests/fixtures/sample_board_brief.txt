@@ -1,0 +1,34 @@
+MANGALORE REFINERY AND PETROCHEMICALS LIMITED
+BOARD BRIEFING NOTE - CAPITAL EXPENDITURE APPROVAL
+
+Subject: Emergency Replacement of HT Switchgear Panel SG-4A and Electrical Remediation Works
+Ref: MRPL/ELE/2026/Q3/047 | Date: September 2026 | Urgency: HIGH
+
+BACKGROUND
+The quarterly electrical inspection of CDU Unit 4, conducted on September 12, 2026, has 
+identified three HIGH severity deficiencies requiring immediate capital expenditure approval:
+
+1. HT Switchgear SG-4A (Panel Rating: 11kV, 630A) - Thermal failure with carbon tracking
+2. MCC-4B Critical Contactor Replacement - Pump P-401A (crude feed critical service)
+3. TR-4C Earthing System Upgrade - Current resistance 14.8 ohm vs limit of 5 ohm
+
+FINANCIAL IMPACT ASSESSMENT
+Estimated Capital Cost:
+  - SG-4A Switchgear OEM Inspection + Repair/Replace: INR 45-65 Lakhs
+  - MCC-4B Contactor Assembly: INR 3.2 Lakhs
+  - Earthing Remediation (3 earth pits, cable, connections): INR 8.5 Lakhs
+  - Total Estimated CAPEX: INR 56.7 - 76.7 Lakhs
+
+Production Risk if NOT Acted Upon:
+  - Estimated probability of unplanned CDU shutdown: 85% within 30 days
+  - Production loss on CDU shutdown: 450 MT/day crude processed
+  - Revenue impact: INR 2.7 Crores/day
+  - Expected downtime for emergency repair vs planned: 12 days vs 4 days
+  - Additional cost of emergency vs planned shutdown: INR 32 Crores
+
+RECOMMENDATION
+Board approval requested for emergency CAPEX of INR 77 Lakhs (including 15% contingency).
+Works to be executed during the emergency maintenance window planned for September 22-25, 2026.
+
+Recommended by: VP Operations & Maintenance
+For Board Approval: Managing Director

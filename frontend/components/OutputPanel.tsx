@@ -102,6 +102,21 @@ export default function OutputPanel({ finishEvent, events }: OutputPanelProps) {
 }
 
 function ArtifactList({ files }: { files: string[] }) {
+  const getIcon = (filename: string) => {
+    if (filename.endsWith(".docx") || filename.endsWith(".doc")) return "📝";
+    if (filename.endsWith(".pptx") || filename.endsWith(".ppt")) return "📊";
+    if (filename.endsWith(".xlsx") || filename.endsWith(".xls")) return "📈";
+    if (filename.endsWith(".pdf")) return "📄";
+    if (filename.endsWith(".py")) return "🐍";
+    return "📁";
+  };
+  const getLabel = (filename: string) => {
+    if (filename.endsWith(".docx")) return "Word Document";
+    if (filename.endsWith(".pptx")) return "PowerPoint";
+    if (filename.endsWith(".xlsx")) return "Excel Workbook";
+    return "Download";
+  };
+
   return (
     <div className="space-y-2">
       <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">
@@ -115,9 +130,9 @@ function ArtifactList({ files }: { files: string[] }) {
           className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/20 
                      rounded-lg text-blue-400 text-xs hover:bg-blue-500/20 transition"
         >
-          <span>📄</span>
+          <span className="text-base">{getIcon(filename)}</span>
           <span className="flex-1 truncate">{filename}</span>
-          <span className="text-blue-600">↓ Download</span>
+          <span className="text-blue-600 shrink-0">↓ {getLabel(filename)}</span>
         </a>
       ))}
     </div>

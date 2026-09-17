@@ -9,11 +9,20 @@ interface TaskInputProps {
 }
 
 const EXAMPLE_PROMPTS = [
-  "Read this inspection report, extract key findings and risks, and draft an approval note",
-  "Write a Python function that detects duplicate rows in a CSV file",
-  "What is shown in this image? Extract all text and identify all components",
-  "Analyze this document and summarize the key points",
-  "Debug this code and fix any issues",
+  // Document pipeline
+  "Read the uploaded inspection report, extract all findings and risks, then draft an approval note as a Word document",
+  // PPT pipeline
+  "Read the uploaded inspection report and create a board-ready PowerPoint presentation with findings, risk matrix, and recommendations",
+  // Excel pipeline
+  "Analyze the uploaded inspection report and generate an Excel risk register with action plan and severity classifications",
+  // Multimodal pipeline
+  "Analyze this P&ID diagram and identify all instrument tags, safety valves, and potential hazard points",
+  // Combined pipeline
+  "Read the inspection report, search the knowledge base for relevant standards, draft Word approval note AND a PPT summary",
+  // Coding pipeline
+  "Calculate the minimum pipe wall thickness for a 6-inch crude oil line at 24 bar using ASME B31.3, run in sandbox and show results",
+  // KB pipeline
+  "Search the knowledge base for earthing resistance standards and acceptable limits per OISD and IS:3043",
 ];
 
 export default function TaskInput({

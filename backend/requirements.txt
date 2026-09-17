@@ -16,6 +16,17 @@ pdf2image
 pymupdf
 python-docx
 
+# New output tools
+python-pptx
+openpyxl
+
+# Local RAG / Knowledge Base (fully offline after first model download)
+sentence-transformers
+numpy
+
+# PDF fixture generation (for demo files)
+fpdf2
+
 # File utilities
 aiofiles
 

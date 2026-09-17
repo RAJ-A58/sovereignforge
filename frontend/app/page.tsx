@@ -5,6 +5,7 @@ import TaskInput from "@/components/TaskInput";
 import AgentLog from "@/components/AgentLog";
 import OutputPanel from "@/components/OutputPanel";
 import NetworkMonitor from "@/components/NetworkMonitor";
+import KnowledgeBasePanel from "@/components/KnowledgeBasePanel";
 import { useAgentWebSocket } from "@/lib/websocket";
 
 export default function Home() {
@@ -55,13 +56,14 @@ export default function Home() {
 
       {/* ── Main 3-column layout ── */}
       <div className="flex-1 grid grid-cols-12 gap-4 p-4 min-h-0">
-        {/* Left: Task Input (3 cols) */}
-        <div className="col-span-12 md:col-span-4 lg:col-span-3 overflow-y-auto">
+        {/* Left: Task Input + KB Panel (3 cols) */}
+        <div className="col-span-12 md:col-span-4 lg:col-span-3 overflow-y-auto flex flex-col gap-3">
           <TaskInput
             onSubmit={(input) => sendTask(input, uploadedFilePath ?? undefined)}
             onFileUpload={handleFileUpload}
             isRunning={isRunning}
           />
+          <KnowledgeBasePanel />
         </div>
 
         {/* Center: Agent Log (5 cols) */}

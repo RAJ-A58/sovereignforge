@@ -60,8 +60,12 @@ BACKEND_PORT = 8000
 FRONTEND_PORT = 3000
 
 # ── Agent ──
-MAX_AGENT_ITERATIONS = 10
+MAX_AGENT_ITERATIONS = 12
 LLM_TIMEOUT_SECONDS = 120   # Ollama can be slow on first load
+
+# ── Knowledge Base ──
+KB_DIR = str(TEMP_BASE / "knowledge_base")
+os.makedirs(KB_DIR, exist_ok=True)
 
 # ── Allowed local hosts (sovereignty check) ──
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "host.docker.internal"}

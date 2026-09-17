@@ -25,8 +25,11 @@ from agent.prompts import AGENT_SYSTEM_PROMPT
 from tools.ocr import run_ocr
 from tools.extract import run_extract
 from tools.draft_word import run_draft_word
+from tools.draft_ppt import run_draft_ppt
+from tools.draft_excel import run_draft_excel
 from tools.code_sandbox import run_code_sandbox
 from tools.image_understand import run_image_understand
+from tools.knowledge_base import run_search_kb, run_ingest_file
 from config import MAX_AGENT_ITERATIONS
 from schemas import AgentEvent
 
@@ -35,8 +38,12 @@ TOOLS: dict = {
     "ocr":              run_ocr,
     "extract":          run_extract,
     "draft_word":       run_draft_word,
+    "draft_ppt":        run_draft_ppt,
+    "draft_excel":      run_draft_excel,
     "code_sandbox":     run_code_sandbox,
     "image_understand": run_image_understand,
+    "search_kb":        run_search_kb,
+    "ingest_file":      run_ingest_file,
 }
 
 

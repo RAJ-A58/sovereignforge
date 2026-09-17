@@ -30,6 +30,9 @@ from router.task_router import classify_task
 from agent.loop import run_agent
 from models.registry import registry
 from sovereignty.monitor import get_network_log, get_external_call_count
+from tools.knowledge_base import (
+    get_kb_stats, ingest_text, search_knowledge_base, clear_knowledge_base, run_ingest_file
+)
 from schemas import AgentEvent, UploadResponse
 from config import UPLOAD_DIR, OUTPUT_DIR, FRONTEND_PORT
 
@@ -213,20 +216,79 @@ async def classify_endpoint(user_input: str, file_path: str = None):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Knowledge Base endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/kb/stats")
+async def kb_stats():
+    """Return knowledge base statistics."""
+    return get_kb_stats()
+
+
+@app.post("/api/kb/ingest-file")
+async def kb_ingest_file(file: UploadFile = File(...), doc_type: str = "document"):
+    """Upload and ingest a file into the knowledge base."""
+    file_id = str(uuid.uuid4())
+    original_name = file.filename or "upload"
+    ext = Path(original_name).suffix.lower()
+    safe_name = f"{file_id}{ext}"
+    save_path = os.path.join(UPLOAD_DIR, safe_name)
+
+    async with aiofiles.open(save_path, "wb") as f:
+        content = await file.read()
+        await f.write(content)
+
+    result = await run_ingest_file(save_path, source_name=original_name, doc_type=doc_type)
+    return result
+
+
+@app.post("/api/kb/ingest-text")
+async def kb_ingest_text(body: dict):
+    """Ingest raw text into the knowledge base."""
+    text = body.get("text", "")
+    source = body.get("source_name", "manual_entry")
+    doc_type = body.get("doc_type", "document")
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, ingest_text, text, source, doc_type)
+    return result
+
+
+@app.get("/api/kb/search")
+async def kb_search(query: str, n_results: int = 5):
+    """Search the knowledge base."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, search_knowledge_base, query, n_results)
+
+
+@app.delete("/api/kb/clear")
+async def kb_clear():
+    """Clear all documents from the knowledge base."""
+    return clear_knowledge_base()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  Health Check
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    """Health check — returns model availability and sovereignty status."""
+    """Health check — returns model availability, sovereignty status, and KB stats."""
     model_status = await registry.health_check()
     external_calls = get_external_call_count()
+    kb = get_kb_stats()
 
     return {
         "status": "ok",
         "sovereign": True,
         "external_calls_blocked": external_calls,
         "models": model_status,
+        "knowledge_base": {
+            "ready": kb["ready"],
+            "total_chunks": kb["total_chunks"],
+            "sources": list(kb["sources"].keys()),
+        },
         "upload_dir": UPLOAD_DIR,
         "output_dir": OUTPUT_DIR,
     }
