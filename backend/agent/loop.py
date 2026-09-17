@@ -89,12 +89,11 @@ async def run_agent(
         })
 
         # ── Call LLM (with streaming for live token output) ──
-        full_prompt = _build_prompt(conversation)
         raw_response = ""
         try:
             async for token in registry.generate_stream(
                 model_key,
-                full_prompt,
+                conversation,
                 system=AGENT_SYSTEM_PROMPT,
             ):
                 raw_response += token

@@ -61,7 +61,7 @@ FRONTEND_PORT = 3000
 
 # ── Agent ──
 MAX_AGENT_ITERATIONS = 12
-LLM_TIMEOUT_SECONDS = 120   # Ollama can be slow on first load
+LLM_TIMEOUT_SECONDS = 600   # Increased to 10 minutes for large context processing (OCR + KB)
 
 # ── Knowledge Base ──
 KB_DIR = str(TEMP_BASE / "knowledge_base")

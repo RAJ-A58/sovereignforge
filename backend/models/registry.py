@@ -26,25 +26,11 @@ class ModelRegistry:
     async def generate(
         self,
         model_key: str,
-        prompt: str,
+        prompt: str | list[dict],
         system: str = None,
         stream: bool = False,
         use_cache: bool = True,
     ) -> str:
-        """
-        Call a text/reasoning model.
-
-        Args:
-            model_key:  "reasoning" | "coding" | "vision"
-            prompt:     The user-facing prompt
-            system:     Optional system prompt override
-            stream:     Not used yet — streaming handled at WebSocket layer
-            use_cache:  If True (default), check semantic cache before calling Ollama.
-
-        Returns:
-            Full response string from the model.
-        """
-        # ── Semantic cache lookup ──────────────────────────────────────────────
         cache_key = f"{model_key}:{system or ''}:{prompt}"
         if use_cache:
             cached = _semantic_cache.get(model_key, cache_key)
@@ -53,21 +39,30 @@ class ModelRegistry:
 
         model_name = self._resolve_model(model_key)
 
+        if isinstance(prompt, str):
+            messages = [{"role": "user", "content": prompt}]
+        else:
+            messages = prompt.copy()
+
+        if system:
+            messages.insert(0, {"role": "system", "content": system})
+
         payload: dict = {
             "model": model_name,
-            "prompt": prompt,
+            "messages": messages,
             "stream": False,
+            "options": {
+                "num_ctx": 8192
+            }
         }
-        if system:
-            payload["system"] = system
 
         async with httpx.AsyncClient(timeout=LLM_TIMEOUT_SECONDS) as client:
             resp = await client.post(
-                f"{self.base_url}/api/generate",
+                f"{self.base_url}/api/chat",
                 json=payload,
             )
             resp.raise_for_status()
-            response = resp.json()["response"]
+            response = resp.json()["message"]["content"]
 
         # ── Store in semantic cache ────────────────────────────────────────────
         if use_cache:
@@ -78,30 +73,32 @@ class ModelRegistry:
     async def generate_stream(
         self,
         model_key: str,
-        prompt: str,
+        prompt: str | list[dict],
         system: str = None,
     ):
-        """
-        Streaming version of generate() — yields text chunks as they arrive from Ollama.
-        Used by the agent loop to emit token_chunk WebSocket events for a live typewriter effect.
-
-        Yields:
-            str: Each text chunk from the streaming Ollama response.
-        """
         model_name = self._resolve_model(model_key)
+
+        if isinstance(prompt, str):
+            messages = [{"role": "user", "content": prompt}]
+        else:
+            messages = prompt.copy()
+
+        if system:
+            messages.insert(0, {"role": "system", "content": system})
 
         payload: dict = {
             "model": model_name,
-            "prompt": prompt,
+            "messages": messages,
             "stream": True,
+            "options": {
+                "num_ctx": 8192
+            }
         }
-        if system:
-            payload["system"] = system
 
         async with httpx.AsyncClient(timeout=LLM_TIMEOUT_SECONDS) as client:
             async with client.stream(
                 "POST",
-                f"{self.base_url}/api/generate",
+                f"{self.base_url}/api/chat",
                 json=payload,
             ) as resp:
                 resp.raise_for_status()
@@ -110,7 +107,7 @@ class ModelRegistry:
                         continue
                     try:
                         chunk_data = json.loads(line)
-                        token = chunk_data.get("response", "")
+                        token = chunk_data.get("message", {}).get("content", "")
                         if token:
                             yield token
                         if chunk_data.get("done", False):
