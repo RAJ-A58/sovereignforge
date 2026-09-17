@@ -38,6 +38,33 @@ export function useAgentWebSocket(backendUrl = "ws://localhost:8000") {
     ws.onmessage = (msg: MessageEvent) => {
       try {
         const event: AgentEvent = JSON.parse(msg.data);
+
+        if (event.type === "token_chunk") {
+          // Accumulate tokens into the last "streaming_thought" event instead of adding new entries
+          setEvents((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.type === "streaming_thought") {
+              const updated = {
+                ...last,
+                data: {
+                  ...last.data,
+                  text: (String(last.data.text ?? "")) + String(event.data.token ?? ""),
+                },
+              };
+              return [...prev.slice(0, -1), updated];
+            }
+            // Start new streaming thought entry
+            return [
+              ...prev,
+              {
+                type: "streaming_thought",
+                data: { text: String(event.data.token ?? ""), iteration: event.data.iteration },
+              },
+            ];
+          });
+          return;
+        }
+
         setEvents((prev) => [...prev, event]);
 
         if (

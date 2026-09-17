@@ -56,6 +56,28 @@ def _cosine_similarity(a, b):
     return float(np.dot(a, b) / denom)
 
 
+def _bm25_score(query_tokens: list[str], doc_tokens: list[str], avg_doc_len: float, k1: float = 1.5, b: float = 0.75) -> float:
+    """
+    Pure-Python BM25 score for keyword relevance.
+    No external library needed — implements the standard BM25 formula.
+    """
+    score = 0.0
+    doc_len = len(doc_tokens)
+    doc_freq = {}
+    for token in doc_tokens:
+        doc_freq[token] = doc_freq.get(token, 0) + 1
+
+    for token in set(query_tokens):
+        if token not in doc_freq:
+            continue
+        tf = doc_freq[token]
+        idf = 1.0  # simplified IDF (1.0 per matching term)
+        numerator = tf * (k1 + 1)
+        denominator = tf + k1 * (1 - b + b * doc_len / max(avg_doc_len, 1))
+        score += idf * numerator / max(denominator, 1e-9)
+    return score
+
+
 def _load_state():
     """Load documents + embeddings from disk."""
     os.makedirs(KB_DIR, exist_ok=True)
@@ -167,29 +189,61 @@ def search_knowledge_base(
 
         query_embedding = embedder.encode(query, convert_to_tensor=False).tolist()
 
-        # Score all chunks
+        # ── Hybrid BM25 + Dense scoring ──────────────────────────────────────
+        query_tokens = query.lower().split()
+        all_doc_tokens = [doc["text"].lower().split() for doc in documents]
+        avg_doc_len = sum(len(t) for t in all_doc_tokens) / max(len(all_doc_tokens), 1)
+
+        # Get max BM25 score for normalization
+        bm25_scores_raw = [
+            _bm25_score(query_tokens, tokens, avg_doc_len)
+            for tokens in all_doc_tokens
+        ]
+        max_bm25 = max(bm25_scores_raw) if bm25_scores_raw else 1.0
+        max_bm25 = max(max_bm25, 1e-9)  # avoid division by zero
+
         scored = []
-        for doc, emb in zip(documents, embeddings):
+        for i, (doc, emb) in enumerate(zip(documents, embeddings)):
             if doc_type_filter and doc.get("doc_type") != doc_type_filter:
                 continue
-            score = _cosine_similarity(query_embedding, emb)
-            scored.append((score, doc))
 
-        # Sort descending, take top N
+            dense_score = _cosine_similarity(query_embedding, emb)
+            # Normalized BM25 to [0, 1] range
+            bm25_norm = bm25_scores_raw[i] / max_bm25
+
+            # Hybrid score: 60% semantic + 40% keyword
+            hybrid_score = 0.60 * dense_score + 0.40 * bm25_norm
+            scored.append((hybrid_score, dense_score, bm25_norm, doc))
+
+        # Sort descending by hybrid score, take top N
         scored.sort(key=lambda x: x[0], reverse=True)
         top = scored[:n_results]
 
+        RELEVANCE_THRESHOLD = 0.20  # raised from 0.15 — filters out noise
         results = [
             {
-                "score": round(score, 4),
+                "score": round(hybrid_score, 4),
+                "dense_score": round(dense_score, 4),
+                "bm25_score": round(bm25_norm, 4),
                 "text": doc["text"],
                 "source": doc["source"],
                 "doc_type": doc.get("doc_type", "unknown"),
                 "chunk_index": doc.get("chunk_index", 0),
             }
-            for score, doc in top
-            if score > 0.15   # relevance threshold
+            for hybrid_score, dense_score, bm25_norm, doc in top
+            if hybrid_score > RELEVANCE_THRESHOLD
         ]
+
+        # ── No-match guardrail ────────────────────────────────────────────────
+        if not results:
+            return {
+                "success": True,
+                "results": [],
+                "query": query,
+                "total_searched": len(scored),
+                "error": None,
+                "message": "No sufficiently relevant documents found. The knowledge base may not contain information about this topic.",
+            }
 
         return {
             "success": True,

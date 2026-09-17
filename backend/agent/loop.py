@@ -32,6 +32,9 @@ from tools.image_understand import run_image_understand
 from tools.knowledge_base import run_search_kb, run_ingest_file
 from config import MAX_AGENT_ITERATIONS
 from schemas import AgentEvent
+import time
+from guardrails.input_guard import check_tool_args, check_artifacts, GuardViolation
+from config import OUTPUT_DIR
 
 # ── Tool dispatch table ──
 TOOLS: dict = {
@@ -77,20 +80,28 @@ async def run_agent(
         "message": f"Starting {task_type} task with {model_key} model...",
     })
 
+    _start_time = time.monotonic()
+
     for iteration in range(MAX_AGENT_ITERATIONS):
         yield AgentEvent(type="thinking", data={
             "iteration": iteration + 1,
             "message": f"Thinking... (step {iteration + 1}/{MAX_AGENT_ITERATIONS})",
         })
 
-        # ── Call LLM ──
+        # ── Call LLM (with streaming for live token output) ──
         full_prompt = _build_prompt(conversation)
+        raw_response = ""
         try:
-            raw_response = await registry.generate(
+            async for token in registry.generate_stream(
                 model_key,
                 full_prompt,
                 system=AGENT_SYSTEM_PROMPT,
-            )
+            ):
+                raw_response += token
+                yield AgentEvent(type="token_chunk", data={
+                    "token": token,
+                    "iteration": iteration + 1,
+                })
         except Exception as exc:
             yield AgentEvent(type="error", data={
                 "message": f"LLM call failed: {str(exc)}",
@@ -130,10 +141,13 @@ async def run_agent(
         # ── Handle FINISH ──
         if action == "finish":
             answer = action_input.get("answer", "Task complete.")
-            artifacts = action_input.get("artifacts", [])
+            raw_artifacts = action_input.get("artifacts", [])
+            # Validate artifacts actually exist on disk (prevent hallucination)
+            valid_artifacts = check_artifacts(raw_artifacts, OUTPUT_DIR)
             yield AgentEvent(type="finish", data={
                 "answer": answer,
-                "artifacts": artifacts,
+                "artifacts": valid_artifacts,
+                "total_elapsed_s": round(time.monotonic() - _start_time, 2),
             })
             return
 
@@ -153,11 +167,29 @@ async def run_agent(
             })
             continue
 
-        # ── Execute tool ──
+        # ── Guardrail: check tool arguments before dispatch ──────────────────
+        try:
+            check_tool_args(action, action_input)
+        except GuardViolation as gv:
+            yield AgentEvent(type="guardrail_block", data={
+                "category": gv.category,
+                "message": gv.reason,
+                "tool": action,
+            })
+            conversation.append({"role": "assistant", "content": raw_response})
+            conversation.append({
+                "role": "user",
+                "content": f"GUARDRAIL BLOCK: {gv.reason}. Choose a different approach.",
+            })
+            continue
+
+        # ── Execute tool (with timing) ────────────────────────────────────────
+        _tool_start = time.monotonic()
         yield AgentEvent(type="tool_call", data={
             "tool": action,
             "input": action_input,
             "message": f"Calling {action}...",
+            "elapsed_s": round(time.monotonic() - _start_time, 2),
         })
 
         try:
@@ -171,10 +203,13 @@ async def run_agent(
         except Exception as exc:
             tool_result = {"success": False, "error": str(exc)}
 
+        _tool_elapsed = round(time.monotonic() - _tool_start, 2)
         yield AgentEvent(type="tool_result", data={
             "tool": action,
             "result": _truncate_result(tool_result),
             "success": bool(tool_result.get("success", False)),
+            "elapsed_s": _tool_elapsed,
+            "total_elapsed_s": round(time.monotonic() - _start_time, 2),
         })
 
         # ── Feed result back into conversation ──

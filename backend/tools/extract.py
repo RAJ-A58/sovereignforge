@@ -18,6 +18,76 @@ EXTRACT_SYSTEM_PROMPT = (
 # Max chars to send to LLM to stay within context window
 MAX_TEXT_LENGTH = 6000
 
+WINDOW_SIZE = 5000    # chars per window
+WINDOW_OVERLAP = 500  # overlap between windows
+
+
+def _sliding_windows(text: str) -> list[str]:
+    """Split long text into overlapping windows for multi-pass extraction."""
+    if len(text) <= WINDOW_SIZE:
+        return [text]
+    windows = []
+    i = 0
+    while i < len(text):
+        windows.append(text[i: i + WINDOW_SIZE])
+        i += WINDOW_SIZE - WINDOW_OVERLAP
+    return windows
+
+
+def _merge_extractions(extractions: list[dict]) -> dict:
+    """Merge multiple window extractions into a single coherent result."""
+    merged_findings: list[str] = []
+    merged_risks: list[str] = []
+    merged_recommendations: list[str] = []
+    summaries: list[str] = []
+
+    for ext in extractions:
+        if not ext.get("success"):
+            continue
+        summaries.append(ext.get("summary", ""))
+        merged_findings.extend(ext.get("findings", []))
+        merged_risks.extend(ext.get("risks", []))
+        merged_recommendations.extend(ext.get("recommendations", []))
+
+    # Deduplicate (simple: remove exact duplicates)
+    def dedupe(lst: list[str]) -> list[str]:
+        seen = set()
+        out = []
+        for item in lst:
+            key = item.strip().lower()[:80]
+            if key and key not in seen:
+                seen.add(key)
+                out.append(item)
+        return out
+
+    return {
+        "success": True,
+        "summary": " ".join(s for s in summaries if s)[:600],
+        "findings": dedupe(merged_findings),
+        "risks": dedupe(merged_risks),
+        "recommendations": dedupe(merged_recommendations),
+        "raw_json": {},
+        "windows_processed": len(extractions),
+    }
+
+
+def _build_extract_prompt(text: str, extraction_goal: str) -> str:
+    """Build the extraction prompt for a single text window."""
+    return f"""Extract the following from this document text: {extraction_goal}
+
+DOCUMENT TEXT:
+{text}
+
+Respond ONLY with a valid JSON object with these exact keys:
+{{
+  "summary": "2-3 sentence overview of this section",
+  "findings": ["finding 1", "finding 2"],
+  "risks": ["risk 1", "risk 2"],
+  "recommendations": ["recommendation 1", "recommendation 2"]
+}}
+
+No other text. No markdown. Just the JSON object."""
+
 
 async def run_extract(
     raw_text: str,
@@ -40,35 +110,38 @@ async def run_extract(
             "raw_json": dict
         }
     """
-    truncated = raw_text[:MAX_TEXT_LENGTH]
-    if len(raw_text) > MAX_TEXT_LENGTH:
-        truncated += f"\n\n[... {len(raw_text) - MAX_TEXT_LENGTH} characters truncated ...]"
+    # ── Single window (short document) ───────────────────────────────────────
+    if len(raw_text) <= WINDOW_SIZE:
+        truncated = raw_text
+        prompt = _build_extract_prompt(truncated, extraction_goal)
+        try:
+            response = await registry.generate("reasoning", prompt, system=EXTRACT_SYSTEM_PROMPT)
+        except Exception as exc:
+            return _failure(str(exc))
+        return _parse_response(response)
 
-    prompt = f"""Extract the following from this document text: {extraction_goal}
+    # ── Multi-window (long document) ─────────────────────────────────────────
+    windows = _sliding_windows(raw_text)
+    # Limit to 6 windows max to avoid excessive LLM calls
+    windows = windows[:6]
 
-DOCUMENT TEXT:
-{truncated}
-
-Respond ONLY with a valid JSON object with these exact keys:
-{{
-  "summary": "2-3 sentence overview of the document",
-  "findings": ["finding 1", "finding 2"],
-  "risks": ["risk 1", "risk 2"],
-  "recommendations": ["recommendation 1", "recommendation 2"]
-}}
-
-No other text. No markdown. Just the JSON object."""
-
-    try:
-        response = await registry.generate(
-            "reasoning",
-            prompt,
-            system=EXTRACT_SYSTEM_PROMPT,
+    extractions = []
+    for i, window in enumerate(windows):
+        prompt = _build_extract_prompt(
+            window,
+            f"{extraction_goal} (document section {i+1}/{len(windows)})",
         )
-    except Exception as exc:
-        return _failure(str(exc))
+        try:
+            response = await registry.generate("reasoning", prompt, system=EXTRACT_SYSTEM_PROMPT)
+            extractions.append(_parse_response(response))
+        except Exception:
+            continue  # skip failed windows, continue with rest
 
-    return _parse_response(response)
+    if not extractions:
+        return _failure("All extraction windows failed.")
+
+    return _merge_extractions(extractions)
+
 
 
 def _parse_response(response: str) -> dict:

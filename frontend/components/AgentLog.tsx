@@ -19,6 +19,8 @@ const EVENT_STYLES: Record<string, { color: string; icon: string; label: string 
   finish:         { color: "text-emerald-400", icon: "🎯", label: "DONE" },
   error:          { color: "text-red-400",     icon: "❌", label: "ERROR" },
   max_iterations: { color: "text-red-300",     icon: "⏱️", label: "TIMEOUT" },
+  streaming_thought: { color: "text-yellow-200",  icon: "✍️", label: "STREAMING" },
+  guardrail_block:   { color: "text-red-500",     icon: "🛡️", label: "BLOCKED" },
 };
 
 function getEventContent(event: AgentEvent): string {
@@ -37,15 +39,17 @@ function getEventContent(event: AgentEvent): string {
     case "tool_result": {
       const success = Boolean(d.success);
       const result = d.result as Record<string, unknown> | undefined;
+      const elapsed = d.elapsed_s !== undefined ? ` (${d.elapsed_s}s)` : "";
       if (!success) {
-        return `Failed — ${result?.error ?? "unknown error"}`;
+        return `Failed — ${result?.error ?? "unknown error"}${elapsed}`;
       }
       // Show relevant result fields
-      if (result?.filename) return `✓ Generated: ${result.filename}`;
-      if (result?.stdout) return `✓ stdout: ${String(result.stdout).slice(0, 120)}`;
-      if (result?.text) return `✓ Extracted ${String(result.text).length} chars`;
-      if (result?.analysis) return `✓ Analysis: ${String(result.analysis).slice(0, 120)}`;
-      return "✓ Success";
+      if (result?.filename) return `✓ Generated: ${result.filename}${elapsed}`;
+      if (result?.stdout) return `✓ stdout: ${String(result.stdout).slice(0, 120)}${elapsed}`;
+      if (result?.text) return `✓ Extracted ${String(result.text).length} chars${elapsed}`;
+      if (result?.analysis) return `✓ Analysis: ${String(result.analysis).slice(0, 120)}${elapsed}`;
+      if (result?.cache_hit) return `✓ Cache hit — instant${elapsed}`;
+      return `✓ Success${elapsed}`;
     }
     case "finish":
       return String(d.answer ?? "Task complete");
@@ -53,6 +57,10 @@ function getEventContent(event: AgentEvent): string {
       return String(d.message ?? "Unknown error");
     case "max_iterations":
       return String(d.message ?? "");
+    case "streaming_thought":
+      return String(d.text ?? "");
+    case "guardrail_block":
+      return `[${d.category}] ${d.message}`;
     default:
       return JSON.stringify(d).slice(0, 150);
   }
@@ -103,6 +111,9 @@ export default function AgentLog({ events, isRunning }: AgentLogProps) {
                 <span className="mr-1.5">{style.icon}</span>
                 <span className="text-gray-600 mr-1.5">[{style.label}]</span>
                 <span className="whitespace-pre-wrap break-words">{content}</span>
+                {event.type === "streaming_thought" && (
+                  <span className="animate-pulse ml-0.5 text-yellow-300">▋</span>
+                )}
               </div>
             );
           })
