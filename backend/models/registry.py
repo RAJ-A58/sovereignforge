@@ -1,4 +1,5 @@
 """Model registry — single point of contact for all Ollama calls."""
+import json
 import httpx
 import base64
 import sys
@@ -8,6 +9,7 @@ from pathlib import Path
 # Allow running from backend/ directory directly
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import OLLAMA_BASE_URL, MODELS, MODELS_FALLBACK, LLM_TIMEOUT_SECONDS
+from cache.semantic_cache import cache as _semantic_cache
 
 
 class ModelRegistry:
@@ -27,19 +29,28 @@ class ModelRegistry:
         prompt: str,
         system: str = None,
         stream: bool = False,
+        use_cache: bool = True,
     ) -> str:
         """
         Call a text/reasoning model.
 
         Args:
-            model_key: "reasoning" | "coding" | "vision"
-            prompt:    The user-facing prompt
-            system:    Optional system prompt override
-            stream:    Not used yet — streaming handled at WebSocket layer
+            model_key:  "reasoning" | "coding" | "vision"
+            prompt:     The user-facing prompt
+            system:     Optional system prompt override
+            stream:     Not used yet — streaming handled at WebSocket layer
+            use_cache:  If True (default), check semantic cache before calling Ollama.
 
         Returns:
             Full response string from the model.
         """
+        # ── Semantic cache lookup ──────────────────────────────────────────────
+        cache_key = f"{model_key}:{system or ''}:{prompt}"
+        if use_cache:
+            cached = _semantic_cache.get(model_key, cache_key)
+            if cached is not None:
+                return cached
+
         model_name = self._resolve_model(model_key)
 
         payload: dict = {
@@ -56,7 +67,56 @@ class ModelRegistry:
                 json=payload,
             )
             resp.raise_for_status()
-            return resp.json()["response"]
+            response = resp.json()["response"]
+
+        # ── Store in semantic cache ────────────────────────────────────────────
+        if use_cache:
+            _semantic_cache.put(model_key, cache_key, response)
+
+        return response
+
+    async def generate_stream(
+        self,
+        model_key: str,
+        prompt: str,
+        system: str = None,
+    ):
+        """
+        Streaming version of generate() — yields text chunks as they arrive from Ollama.
+        Used by the agent loop to emit token_chunk WebSocket events for a live typewriter effect.
+
+        Yields:
+            str: Each text chunk from the streaming Ollama response.
+        """
+        model_name = self._resolve_model(model_key)
+
+        payload: dict = {
+            "model": model_name,
+            "prompt": prompt,
+            "stream": True,
+        }
+        if system:
+            payload["system"] = system
+
+        async with httpx.AsyncClient(timeout=LLM_TIMEOUT_SECONDS) as client:
+            async with client.stream(
+                "POST",
+                f"{self.base_url}/api/generate",
+                json=payload,
+            ) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk_data = json.loads(line)
+                        token = chunk_data.get("response", "")
+                        if token:
+                            yield token
+                        if chunk_data.get("done", False):
+                            break
+                    except Exception:
+                        continue
 
     async def generate_vision(self, prompt: str, image_path: str) -> str:
         """
@@ -103,6 +163,10 @@ class ModelRegistry:
             raise ValueError(f"Unknown model key: {model_key!r}. "
                              f"Valid keys: {list(self.models.keys())}")
         return self.models[model_key]
+
+    def get_cache_stats(self) -> dict:
+        """Return semantic cache statistics."""
+        return _semantic_cache.stats()
 
 
 # ── Singleton — import this from everywhere ──

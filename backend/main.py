@@ -33,6 +33,7 @@ from sovereignty.monitor import get_network_log, get_external_call_count
 from tools.knowledge_base import (
     get_kb_stats, ingest_text, search_knowledge_base, clear_knowledge_base, run_ingest_file
 )
+from guardrails.input_guard import check_user_input, GuardViolation
 from schemas import AgentEvent, UploadResponse
 from config import UPLOAD_DIR, OUTPUT_DIR, FRONTEND_PORT
 
@@ -121,6 +122,19 @@ async def agent_websocket(websocket: WebSocket):
                 await websocket.send_json({
                     "type": "error",
                     "data": {"message": f"File not found: {file_path}"},
+                })
+                continue
+
+            # ── Input guardrail check ──────────────────────────────────────────
+            try:
+                check_user_input(user_input)
+            except GuardViolation as gv:
+                await websocket.send_json({
+                    "type": "guardrail_block",
+                    "data": {
+                        "category": gv.category,
+                        "message": gv.reason,
+                    },
                 })
                 continue
 
@@ -274,10 +288,14 @@ async def kb_clear():
 
 @app.get("/health")
 async def health():
-    """Health check — returns model availability, sovereignty status, and KB stats."""
+    """Health check — returns model availability, sovereignty status, KB stats, and cache stats."""
     model_status = await registry.health_check()
     external_calls = get_external_call_count()
     kb = get_kb_stats()
+
+    # Import cache stats (lazy import avoids circular dependency)
+    from cache.semantic_cache import cache as _sem_cache
+    from cache.ocr_cache import get_cache_stats as _ocr_stats
 
     return {
         "status": "ok",
@@ -288,6 +306,10 @@ async def health():
             "ready": kb["ready"],
             "total_chunks": kb["total_chunks"],
             "sources": list(kb["sources"].keys()),
+        },
+        "cache": {
+            "semantic_llm": _sem_cache.stats(),
+            "ocr": _ocr_stats(),
         },
         "upload_dir": UPLOAD_DIR,
         "output_dir": OUTPUT_DIR,

@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pytesseract
 from PIL import Image
 from config import TESSERACT_CMD, OCR_DPI
+from cache.ocr_cache import get_cached_ocr, put_cached_ocr
 
 # Configure Tesseract path (Windows needs explicit path)
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
@@ -34,11 +35,18 @@ async def run_ocr(file_path: str) -> dict:
         return {"success": False, "text": "", "pages": 0,
                 "error": f"File not found: {file_path}"}
 
+    # ── Cache check — skip Tesseract if we've seen this file before ──
+    cached = get_cached_ocr(file_path)
+    if cached:
+        return cached
+
     try:
         if path.suffix.lower() == ".pdf":
-            return await _ocr_pdf(path)
+            result = await _ocr_pdf(path)
         else:
-            return await _ocr_image(path)
+            result = await _ocr_image(path)
+        put_cached_ocr(file_path, result)
+        return result
     except Exception as exc:
         return {"success": False, "text": "", "pages": 0, "error": str(exc)}
 
